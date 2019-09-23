@@ -78,6 +78,7 @@ class pki_x509 : public pki_x509super
 		void setSubject(const x509name &n);
 		void setIssuer(const x509name &n);
 		bool caAndPathLen(bool *ca, a1int *pathlen, bool *hasLen) const;
+		RSA_PSS_PARAMS *internal_pss_parameters(void);
 
 		void fromData(const unsigned char *p, db_header_t *head);
 		bool isCA() const;
@@ -94,7 +95,7 @@ class pki_x509 : public pki_x509super
 		extList getV3ext() const;
 		bool checkDate();
 		bool addV3ext(const x509v3ext &e, bool skip_existing = false);
-		void sign(pki_key *signkey, const EVP_MD *digest);
+		void sign(pki_key *signkey, const EVP_MD *digest, int pss);
 		pki_x509 *findIssuer();
 		X509 *getCert()
 		{

@@ -44,6 +44,10 @@ void CertDetail::on_showExt_clicked()
 
 void CertDetail::setX509super(pki_x509super *x)
 {
+	const char *mds;
+	const EVP_MD *md;
+	int salt, trailer;
+
 	descr->setText(x->getIntName());
 
 	// examine the key
@@ -85,6 +89,36 @@ void CertDetail::setX509super(pki_x509super *x)
 	}
 
 	// Algorithm
+	if (x->signed_with_pss()) {
+		x->pss_parameters(&md, &salt, &trailer);
+
+		switch (EVP_MD_type(md)) {
+		case NID_sha1:
+			mds = "SHA1";
+			break;
+		case NID_sha256:
+			mds = "SHA256";
+			break;
+		case NID_sha384:
+			mds = "SHA384";
+			break;
+		case NID_sha512:
+			mds = "SHA512";
+			break;
+		default:
+			mds = "unknown";
+			break;
+		}
+
+		pssparams->setVisible(true);
+		pss_hashalgo->setText(QString(mds));
+		pss_mgf1->setText(QString(mds));
+		pss_saltlen->setText(QString("0x%1").arg(salt, 0, 16));
+		pss_trailerfield->setText(QString("0x%1").arg(trailer, 0, 16));
+	} else {
+		pssparams->setVisible(false);
+	}
+
 	sigAlgo->setText(x->getSigAlg());
 	connect(sigAlgo, SIGNAL(doubleClicked(QString)),
 		MainWindow::getResolver(), SLOT(searchOid(QString)));

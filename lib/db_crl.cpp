@@ -294,7 +294,8 @@ void db_crl::newItem(pki_x509 *cert)
 		crl->setIssuer(cert);
 		crl->setLastUpdate(widget->lastUpdate->getDate());
 		crl->setNextUpdate(widget->nextUpdate->getDate());
-		crl->sign(cert->getRefKey(), widget->hashAlgo->currentHash());
+		crl->sign(cert->getRefKey(), widget->hashAlgo->currentHash(),
+		    widget->rsapss->isChecked());
 
 		Transaction;
 		if (!TransBegin())

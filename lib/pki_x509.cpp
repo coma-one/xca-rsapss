@@ -557,18 +557,36 @@ bool pki_x509::hasExtension(int nid) const
 	return getV3ext().idxByNid(nid) != -1;
 }
 
-void pki_x509::sign(pki_key *signkey, const EVP_MD *digest)
+void pki_x509::sign(pki_key *signkey, const EVP_MD *digest, int pss)
 {
+	int result;
 	EVP_PKEY *tkey;
+	EVP_MD_CTX *ctx;
+	EVP_PKEY_CTX *pkctx;
+
 	if (!signkey) {
 		my_error(tr("There is no key for signing !"));
 	}
+
+	result = 0;
+
 	tkey = signkey->decryptKey();
 	pki_openssl_error();
-	X509_sign(cert, tkey, digest);
-	pki_openssl_error();
-	EVP_PKEY_free(tkey);
-	pki_openssl_error();
+
+	prepare_signing_context(&ctx, &pkctx, digest, tkey, pss);
+
+	if (X509_sign_ctx(cert, ctx) == 0)
+		result = 0;
+	else
+		result = 1;
+
+	EVP_MD_CTX_free(ctx);
+
+	if (result == 0) {
+		pki_openssl_error();
+		// In case pki_openssl_error() didn't end up throwing..
+		my_error("x509::sign failed");
+	}
 }
 
 void pki_x509::fromData(const unsigned char *p, db_header_t *head)
@@ -866,6 +884,24 @@ int pki_x509::sigAlg() const
 pki_x509 *pki_x509::getSigner()
 {
 	return db_base::lookupPki<pki_x509>(issuerSqlId);
+}
+
+RSA_PSS_PARAMS *
+pki_x509::internal_pss_parameters(void)
+{
+	RSA_PSS_PARAMS *pss;
+	const struct X509_algor_st *sigalgo;
+
+	if (!signed_with_pss())
+		my_error("get_pss_parameters called on non PSS signed certificate");
+
+	sigalgo = X509_get0_tbs_sigalg(cert);
+
+	pss = (RSA_PSS_PARAMS *)ASN1_TYPE_unpack_sequence(
+	    ASN1_ITEM_rptr(RSA_PSS_PARAMS), sigalgo->parameter);
+	pki_openssl_error();
+
+	return (pss);
 }
 
 bool pki_x509::isRevoked() const

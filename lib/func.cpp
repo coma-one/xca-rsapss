@@ -18,6 +18,9 @@
 #include <openssl/asn1.h>
 #include <openssl/err.h>
 #include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#include <openssl/x509.h>
 #include <openssl/buffer.h>
 
 #if defined(Q_OS_MAC)
@@ -44,6 +47,11 @@
 #if defined(Q_OS_WIN32)
 #include <shlobj.h>
 #endif
+
+extern "C" {
+int rsa_pss_get_param(const RSA_PSS_PARAMS *pss, const EVP_MD **pmd,
+                      const EVP_MD **pmgf1md, int *psaltlen);
+}
 
 QString currentDB;
 
@@ -598,4 +606,109 @@ QString appendXcaComment(QString current, QString msg)
 	if (!current.endsWith("\n") && !current.isEmpty())
 		current += "\n";
 	return current + QString("(%1)\n").arg(msg);
+}
+
+void
+prepare_signing_context(EVP_MD_CTX **ctx, EVP_PKEY_CTX **pkctx,
+    const EVP_MD *md, EVP_PKEY *pkey, int pss)
+{
+	const char *msg;
+
+	if (pss) {
+		if (md != EVP_sha1() && md != EVP_sha256() &&
+		    md != EVP_sha384() && md != EVP_sha512())
+			throw errorEx("selected digest cannot be used with RSA-PSS");
+	}
+
+	msg = NULL;
+	*ctx = NULL;
+
+	if ((*ctx = EVP_MD_CTX_new()) == NULL)
+		goto cleanup;
+
+	if (EVP_DigestSignInit(*ctx, pkctx, md, NULL, pkey) <= 0) {
+		msg = "EVP_DigestSignInit failed";
+		goto cleanup;
+	}
+
+	if (pss) {
+		if (EVP_PKEY_CTX_set_rsa_padding(*pkctx, RSA_PKCS1_PSS_PADDING) <= 0) {
+			msg = "EVP_PKEY_CTX_set_rsa_padding failed";
+			goto cleanup;
+		}
+
+		if (EVP_PKEY_CTX_set_rsa_mgf1_md(*pkctx, md) <= 0) {
+			msg = "EVP_PKEY_CTX_set_rsa_mgf1_md failed";
+			goto cleanup;
+		}
+
+		if (EVP_PKEY_CTX_set_rsa_pss_saltlen(*pkctx,
+		    RSA_PSS_SALTLEN_DIGEST) <= 0) {
+			msg = "EVP_PKEY_CTX_set_rsa_pss_saltlen failed";
+			goto cleanup;
+		}
+	}
+
+cleanup:
+	if (msg != NULL) {
+		EVP_MD_CTX_free(*ctx);
+		*ctx = NULL;
+		throw errorEx(msg);
+	}
+}
+
+void
+parse_pss_parameters(RSA_PSS_PARAMS *pss, const EVP_MD **md,
+    int *salt, int *trailer)
+{
+	int saltlen;
+	const EVP_MD *pmd;
+	const EVP_MD *mgf1;
+	const struct X509_algor_st *alg;
+
+	if (pss->maskGenAlgorithm != NULL) {
+		alg = pss->maskGenAlgorithm;
+
+		if (OBJ_obj2nid(alg->algorithm) != NID_mgf1) {
+			RSA_PSS_PARAMS_free(pss);
+			throw errorEx("invalid PSS parameters");
+		}
+
+		pss->maskHash = (X509_ALGOR *)ASN1_TYPE_unpack_sequence(
+		    ASN1_ITEM_rptr(X509_ALGOR), alg->parameter);
+
+		if (pss->maskHash == NULL) {
+			RSA_PSS_PARAMS_free(pss);
+			throw errorEx("invalid PSS::maskHash parameter");
+		}
+	}
+
+	if (!rsa_pss_get_param(pss, &pmd, &mgf1, &saltlen)) {
+		RSA_PSS_PARAMS_free(pss);
+		throw errorEx("rsa_pss_get_param");
+	}
+
+	if (pmd != mgf1) {
+		RSA_PSS_PARAMS_free(pss);
+		throw errorEx("pss:hashAlgorithm != pss:mgf1 (unsupported)");
+	}
+
+	if (saltlen != EVP_MD_size(pmd)) {
+		RSA_PSS_PARAMS_free(pss);
+		throw errorEx("pss:saltlen != size(hashAlgorithm) (unsupported)");
+	}
+
+	*md = pmd;
+
+	if (salt)
+		*salt = saltlen;
+
+	if (trailer) {
+		if (pss->trailerField) {
+			*trailer = ASN1_INTEGER_get(pss->trailerField);
+		} else {
+			// default trailer field if non present.
+			*trailer = 0xBC;
+		}
+	}
 }

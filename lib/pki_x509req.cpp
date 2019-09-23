@@ -93,12 +93,16 @@ QSqlError pki_x509req::deleteSqlData()
 	return q.lastError();
 }
 
-void pki_x509req::createReq(pki_key *key, const x509name &dn, const EVP_MD *md, extList el)
+void pki_x509req::createReq(pki_key *key, const x509name &dn, const EVP_MD *md, extList el, int pss)
 {
+	int result;
+	EVP_MD_CTX *ctx;
+	EVP_PKEY *privkey;
+	EVP_PKEY_CTX *pkctx;
 	QList<int> bad_nids; bad_nids << NID_authority_key_identifier <<
 		NID_issuer_alt_name << NID_undef;
 
-	EVP_PKEY *privkey = NULL;
+	result = 0;
 
 	if (key->isPubKey()) {
 		my_error(tr("Signing key not valid (public key)"));
@@ -124,9 +128,22 @@ void pki_x509req::createReq(pki_key *key, const x509name &dn, const EVP_MD *md, 
 	pki_openssl_error();
 
 	privkey = key->decryptKey();
-	X509_REQ_sign(request, privkey, md);
 	pki_openssl_error();
-	EVP_PKEY_free(privkey);
+
+	prepare_signing_context(&ctx, &pkctx, md, privkey, pss);
+
+	if (X509_REQ_sign_ctx(request, ctx) == 0)
+		result = 0;
+	else
+		result = 1;
+
+	EVP_MD_CTX_free(ctx);
+
+	if (result == 0) {
+		pki_openssl_error();
+		// In case pki_openssl_error() didn't end up throwing..
+		my_error("x509req::sign failed");
+	}
 }
 
 QString pki_x509req::getMsg(msg_type msg) const
@@ -239,6 +256,24 @@ x509name pki_x509req::getSubject() const
 int pki_x509req::sigAlg() const
 {
 	return X509_REQ_get_signature_nid(request);
+}
+
+RSA_PSS_PARAMS *
+pki_x509req::internal_pss_parameters(void)
+{
+	RSA_PSS_PARAMS *pss;
+	const struct X509_algor_st *sigalgo;
+
+	if (!signed_with_pss())
+		my_error("get_pss_parameters called on non PSS signed request");
+
+	X509_REQ_get0_signature(request, NULL, &sigalgo);
+
+	pss = (RSA_PSS_PARAMS *)ASN1_TYPE_unpack_sequence(
+	    ASN1_ITEM_rptr(RSA_PSS_PARAMS), sigalgo->parameter);
+	pki_openssl_error();
+
+	return (pss);
 }
 
 void pki_x509req::setSubject(const x509name &n)

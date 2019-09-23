@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <openssl/evp.h>
+#include <openssl/rsa.h>
 
 class Validity;
 extern QString currentDB;
@@ -49,6 +50,10 @@ const char *OBJ_obj2sn(ASN1_OBJECT *a);
 QString OBJ_obj2QString(const ASN1_OBJECT *a, int no_name = 0);
 
 void inc_progress_bar(int, int, void *p);
+void prepare_signing_context(EVP_MD_CTX **ctx, EVP_PKEY_CTX **pkctx,
+         const EVP_MD *md, EVP_PKEY *pkey, int pss);
+void parse_pss_parameters(RSA_PSS_PARAMS *pss, const EVP_MD **md,
+         int *salt, int *trailer);
 
 extern QMap<int, QString> dn_translations;
 void dn_translations_setup();

@@ -35,6 +35,7 @@ class pki_x509super : public pki_x509name
 	protected:
 		QVariant keySqlId;
 		virtual int sigAlg() const = 0;
+
 	public:
 		pki_x509super(const QString name = "");
 		virtual ~pki_x509super();
@@ -56,6 +57,9 @@ class pki_x509super : public pki_x509name
 		void opensslConf(QString fname);
 		bool visible() const;
 		bool hasPrivKey() const;
+		bool signed_with_pss() const;
+		void pss_parameters(const EVP_MD **md, int *salt, int *trailer);
+		virtual RSA_PSS_PARAMS *internal_pss_parameters(void);
 		QVariant getIcon(const dbheader *hd) const;
 		QSqlError lookupKey();
 		QSqlError insertSqlData();

@@ -552,7 +552,7 @@ pki_x509 *db_x509::newCert(NewX509 *dlg)
 
 	const EVP_MD *hashAlgo = dlg->hashAlgo->currentHash();
 	// and finally sign the request
-	cert->sign(signkey, hashAlgo);
+	cert->sign(signkey, hashAlgo, dlg->rsapss->isChecked());
 
 	// set the comment field
 	cert->setComment(dlg->comment->toPlainText());
@@ -893,7 +893,9 @@ void db_x509::certRenewal(QModelIndexList indexes)
 	a1int serial;
 	CertExtend *dlg = NULL;
 	x509rev r;
+	int pss = 0;
 	bool doRevoke = false;
+	const EVP_MD *md = NULL;
 
 	if (indexes.size() == 0)
 		return;
@@ -939,7 +941,15 @@ void db_x509::certRenewal(QModelIndexList indexes)
 			newcert->setNotAfter(a);
 
 			// and finally sign the cert
-			newcert->sign(signkey, oldcert->getDigest());
+			if (oldcert->signed_with_pss()) {
+				pss = 1;
+				oldcert->pss_parameters(&md, NULL, NULL);
+			} else {
+				pss = 0;
+				md = oldcert->getDigest();
+			}
+
+			newcert->sign(signkey, md, pss);
 			newcert = (pki_x509 *)insert(newcert);
 			createSuccess(newcert);
 		}
@@ -1049,7 +1059,10 @@ void db_x509::toCertificate(QModelIndex index)
 
 void db_x509::toRequest(QModelIndex idx)
 {
+	int pss;
+	const EVP_MD *md;
 	pki_x509 *cert = static_cast<pki_x509*>(idx.internalPointer());
+
 	if (!cert)
 		return;
 
@@ -1058,8 +1071,18 @@ void db_x509::toRequest(QModelIndex idx)
 		check_oom(req);
 		req->pkiSource = transformed;
 		req->setIntName(cert->getIntName());
+
+		if (cert->signed_with_pss()) {
+			pss = 1;
+			cert->pss_parameters(&md, NULL, NULL);
+		} else {
+			pss = 0;
+			md = cert->getDigest();
+		}
+
 		req->createReq(cert->getRefKey(), cert->getSubject(),
-			cert->getDigest(), cert->getV3ext());
+			md, cert->getV3ext(), pss);
+
 		createSuccess(mainwin->reqs->insert(req));
 	}
 	catch (errorEx &err) {

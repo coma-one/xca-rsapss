@@ -254,16 +254,37 @@ bool pki_crl::visible() const
 	return extensions().search(limitPattern);
 }
 
-void pki_crl::sign(pki_key *key, const EVP_MD *md)
+void pki_crl::sign(pki_key *key, const EVP_MD *md, int pss)
 {
+	int result;
 	EVP_PKEY *pkey;
+	EVP_MD_CTX *ctx;
+	EVP_PKEY_CTX *pkctx;
+
 	if (!key || key->isPubKey())
-		return;
-	X509_CRL_sort(crl);
+		my_error("no key or public key given");
+
+	result = 0;
+
 	pkey = key->decryptKey();
-	X509_CRL_sign(crl, pkey, md);
-	EVP_PKEY_free(pkey);
 	pki_openssl_error();
+
+	prepare_signing_context(&ctx, &pkctx, md, pkey, pss);
+
+	X509_CRL_sort(crl);
+
+	if (X509_CRL_sign_ctx(crl, ctx) == 0)
+		result = 0;
+	else
+		result = 1;
+
+	EVP_MD_CTX_free(ctx);
+
+	if (result == 0) {
+		pki_openssl_error();
+		// In case pki_openssl_error() didn't end up throwing...
+		my_error("crl::sign failed");
+	}
 }
 
 void pki_crl::writeDefault(const QString &dirname) const
@@ -327,6 +348,32 @@ x509revList pki_crl::getRevList()
 x509name pki_crl::getSubject() const
 {
 	return x509name(X509_CRL_get_issuer(crl));
+}
+
+bool
+pki_crl::signed_with_pss(void) const
+{
+	return X509_CRL_get_signature_nid(crl) == NID_rsassaPss;
+}
+
+void
+pki_crl::pss_parameters(const EVP_MD **md, int *salt, int *trailer)
+{
+	RSA_PSS_PARAMS *pss;
+	const struct X509_algor_st *sigalgo;
+
+	if (!signed_with_pss())
+		throw errorEx("pss_parameters called on non PSS signed CRL");
+
+	X509_CRL_get0_signature(crl, NULL, &sigalgo);
+
+	pss = (RSA_PSS_PARAMS *)ASN1_TYPE_unpack_sequence(
+	    ASN1_ITEM_rptr(RSA_PSS_PARAMS), sigalgo->parameter);
+	pki_openssl_error();
+
+	parse_pss_parameters(pss, md, salt, trailer);
+
+	RSA_PSS_PARAMS_free(pss);
 }
 
 bool pki_crl::verify(pki_x509 *issuer)

@@ -53,7 +53,7 @@ class pki_x509req : public pki_x509super
 		int verify() const;
 		pki_key *getPubKey() const;
 		void createReq(pki_key *key, const x509name &dn,
-				const EVP_MD *md, extList el);
+				const EVP_MD *md, extList el, int pss);
 		void setSubject(const x509name &n);
 		QVariant column_data(const dbheader *hd) const;
 		QVariant getIcon(const dbheader *hd) const;
@@ -77,6 +77,7 @@ class pki_x509req : public pki_x509super
 		QSqlError insertSqlData();
 		QSqlError deleteSqlData();
 		void restoreSql(const QSqlRecord &rec);
+		RSA_PSS_PARAMS *internal_pss_parameters(void);
 };
 
 Q_DECLARE_METATYPE(pki_x509req *);

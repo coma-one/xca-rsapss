@@ -10,6 +10,9 @@
 #include "pki_x509super.h"
 #include "db_base.h"
 
+#include <openssl/rsa.h>
+#include <openssl/evp.h>
+
 QPixmap *pki_x509super::icon[1];
 
 pki_x509super::pki_x509super(const QString name)
@@ -130,6 +133,29 @@ QString pki_x509super::getSigAlg() const
 const EVP_MD *pki_x509super::getDigest()
 {
 	return EVP_get_digestbynid(sigAlg());
+}
+
+bool pki_x509super::signed_with_pss(void) const
+{
+	return sigAlg() == NID_rsassaPss;
+}
+
+void
+pki_x509super::pss_parameters(const EVP_MD **md, int *salt, int *trailer)
+{
+	RSA_PSS_PARAMS		*pss;
+
+	pss = internal_pss_parameters();
+	parse_pss_parameters(pss, md, salt, trailer);
+	RSA_PSS_PARAMS_free(pss);
+}
+
+RSA_PSS_PARAMS *
+pki_x509super::internal_pss_parameters(void)
+{
+	my_error("internal_pss_parameters not implemented");
+
+	return (NULL);
 }
 
 bool pki_x509super::hasPrivKey() const

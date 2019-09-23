@@ -40,8 +40,10 @@ class pki_crl: public pki_x509name
 		void addRev(const x509rev &rev, bool withReason=true);
 		void addExt(int nid, QString value);
 		void addV3ext(const x509v3ext &e);
-		void sign(pki_key *key, const EVP_MD *md = EVP_md5());
+		void sign(pki_key *key, const EVP_MD *md, int pss);
+		bool signed_with_pss(void) const;
 		void writeCrl(XFile &file, bool pem = true) const;
+		void pss_parameters(const EVP_MD **md, int *salt, int *trailer);
 		pki_x509 *getIssuer() const;
 		QString getIssuerName() const;
 		void setIssuer(pki_x509 *iss);

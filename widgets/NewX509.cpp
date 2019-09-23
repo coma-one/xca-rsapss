@@ -622,6 +622,7 @@ void NewX509::on_reqList_currentIndexChanged(const QString &)
 void NewX509::switchHashAlgo()
 {
 	pki_key *key;
+	const EVP_MD *md;
 	pki_x509super *sig;
 
 	if (foreignSignRB->isChecked())
@@ -639,6 +640,16 @@ void NewX509::switchHashAlgo()
 	} else {
 		hashAlgo->setKeyType(EVP_PKEY_RSA);
 		hashAlgo->setupAllHashes();
+	}
+
+	if (sig) {
+		if (sig->signed_with_pss()) {
+			sig->pss_parameters(&md, NULL, NULL);
+			rsapss->setChecked(true);
+			hashAlgo->setCurrentMD(md);
+		} else {
+			rsapss->setChecked(false);
+		}
 	}
 }
 

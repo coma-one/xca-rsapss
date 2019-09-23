@@ -229,6 +229,13 @@
          <item>
           <widget class="hashBox" name="hashAlgo"/>
          </item>
+          <item>
+           <widget class="QCheckBox" name="rsapss">
+            <property name="text">
+             <string>Use RSA-PSS</string>
+            </property>
+           </widget>
+          </item>
         </layout>
        </item>
        <item>

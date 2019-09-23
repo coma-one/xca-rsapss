@@ -31,7 +31,10 @@ CrlDetail::CrlDetail(MainWindow *mainwin)
 void CrlDetail::setCrl(pki_crl *crl)
 {
 	pki_x509 *iss;
+	const char *mds;
 	x509v3ext e1, e2;
+	const EVP_MD *md;
+	int salt, trailer;
 
 	iss = crl->getIssuer();
 	signCheck->disableToolTip();
@@ -54,6 +57,36 @@ void CrlDetail::setCrl(pki_crl *crl)
 		issuerIntName->disableToolTip();
 		signCheck->setText(tr("Verification not possible"));
 		signCheck->setDisabled(true);
+	}
+
+	if (crl->signed_with_pss()) {
+		crl->pss_parameters(&md, &salt, &trailer);
+
+		switch (EVP_MD_type(md)) {
+		case NID_sha1:
+			mds = "SHA1";
+			break;
+		case NID_sha256:
+			mds = "SHA256";
+			break;
+		case NID_sha384:
+			mds = "SHA384";
+			break;
+		case NID_sha512:
+			mds = "SHA512";
+			break;
+		default:
+			mds = "unknown";
+			break;
+		}
+
+		pssparams->setVisible(true);
+		pss_hashalgo->setText(QString(mds));
+		pss_mgf1->setText(QString(mds));
+		pss_saltlen->setText(QString("0x%1").arg(salt, 0, 16));
+		pss_trailerfield->setText(QString("0x%1").arg(trailer, 0, 16));
+	} else {
+		pssparams->setVisible(false);
 	}
 
 	connect(signCheck, SIGNAL(doubleClicked(QString)),
